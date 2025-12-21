@@ -89,10 +89,13 @@ swap_fav() {
 
 leer_tecla() {
     local key
-    read -rsn1 key || return
+    read -rsn1 -t 0.2 key || {
+        echo ""
+        return
+    }
 
     if [[ "$key" == $'\x1b' ]]; then
-        read -rsn2 key
+        read -rsn2 -t 0.01 key
         case "$key" in
             "[A") echo "UP" ;;
             "[B") echo "DOWN" ;;
@@ -114,12 +117,16 @@ leer_tecla() {
 
 main_loop() {
     while true; do
+        check_player   # ← se ejecuta siempre
+
         if [ "$NECESITA_REDIBUJAR" = "1" ]; then
             menu
             NECESITA_REDIBUJAR=0
         fi
 
         op=$(leer_tecla)
+
+        [ -z "$op" ] && continue
 
         # ─────── MODO MOVER ───────
         if [ "$MODO_MOVER" = "1" ]; then
