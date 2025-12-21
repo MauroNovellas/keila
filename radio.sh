@@ -1,5 +1,8 @@
 #!/bin/bash
 
+tput civis
+trap 'tput cnorm; exit' INT TERM
+
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 LIB="$BASE_DIR/lib"
 
