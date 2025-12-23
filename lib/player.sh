@@ -1,107 +1,132 @@
 #!/bin/bash
 
-es_termux() {
-    [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]
-}
+PAUSADO=0
 
-DEPENDENCIAS_LINUX=(
-    "cvlc:vlc"
-    "fzf:fzf"
-    "ip:iproute2"
-    "tput:ncurses-bin"
-)
+FIFO="/tmp/radio_fifo"
 
-DEPENDENCIAS_TERMUX=(
-    "vlc:vlc"
-    "fzf:fzf"
-    "tput:ncurses"
-)
+PID_CVLC=""
+ACTUAL_NOMBRE="(ninguna)"
+ACTUAL_URL=""
+ESTADO="Detenido"
+INFO_STREAM=""
+START_TIME=0
 
-detectar_gestor_paquetes() {
-    if command -v apt >/dev/null; then
-        echo "apt"
-    elif command -v pacman >/dev/null; then
-        echo "pacman"
-    elif command -v dnf >/dev/null; then
-        echo "dnf"
+NET_IF=""
+LAST_RX=0
+LAST_CHECK=0
+KBPS=0
+
+init_player() {
+    if command -v cvlc >/dev/null; then
+        VLC_CMD="cvlc"
+    elif command -v vlc >/dev/null; then
+        VLC_CMD="vlc"
     else
-        echo ""
-    fi
-}
-
-instalar_paquete() {
-    local gestor="$1"
-    local paquete="$2"
-
-    case "$gestor" in
-        termux)
-            pkg install -y "$paquete"
-            ;;
-        apt)
-            sudo apt update && sudo apt install -y "$paquete"
-            ;;
-        pacman)
-            sudo pacman -Sy --noconfirm "$paquete"
-            ;;
-        dnf)
-            sudo dnf install -y "$paquete"
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
-comprobar_dependencias() {
-    local gestor deps bin pkg
-
-    gestor=$(detectar_gestor_paquetes)
-
-    if [ -z "$gestor" ]; then
-        echo "❌ No se pudo detectar un gestor de paquetes compatible."
+        echo "VLC no está instalado"
         exit 1
     fi
 
-    if [ "$gestor" = "termux" ]; then
-        deps=("${DEPENDENCIAS_TERMUX[@]}")
-        echo "📱 Entorno Termux detectado"
+    [ -p "$FIFO" ] || mkfifo "$FIFO"
+    exec 3<> "$FIFO"
+}
+
+vlc_vol() {
+    echo $((VOL_ACTUAL * 256 / 100))
+}
+
+get_iface() {
+    ip route get 1 2>/dev/null | awk '{print $5; exit}'
+}
+
+get_rx_bytes() {
+    awk -v iface="$NET_IF" '$1 ~ iface":" {print $2}' /proc/net/dev
+}
+
+reproducir() {
+    stop_player
+
+    PAUSADO=0
+    ACTUAL_NOMBRE="$1"
+    ACTUAL_URL="$2"
+    ESTADO="Conectando"
+    INFO_STREAM="Conectando"
+    START_TIME=$(date +%s)
+    NECESITA_REDIBUJAR=1
+
+    NET_IF=$(get_iface)
+    LAST_RX=$(get_rx_bytes)
+    LAST_CHECK=$(date +%s)
+
+    $VLC_CMD --quiet --extraintf rc --rc-fake-tty "$ACTUAL_URL" \
+    <"$FIFO" >/dev/null 2>&1 &
+
+
+    PID_CVLC=$!
+    echo "volume $(vlc_vol)" >&3
+    save_state
+}
+
+check_player() {
+    [ -z "$PID_CVLC" ] && return
+
+    if [ "$PAUSADO" = "1" ]; then
+        ESTADO="Pausado"
+        INFO_STREAM="Pausado"
     else
-        deps=("${DEPENDENCIAS_LINUX[@]}")
+        if [ "$KBPS" -gt 0 ]; then
+            ESTADO="Reproduciendo"
+            INFO_STREAM="${KBPS} kbps"
+        else
+            INFO_STREAM="Conectando"
+        fi
     fi
 
-    for dep in "${deps[@]}"; do
-        IFS=":" read -r bin pkg <<< "$dep"
 
-        if ! command -v "$bin" >/dev/null; then
-            echo "⚠️ Falta dependencia: $bin"
-            echo "→ Instalando: $pkg"
+    now=$(date +%s)
 
-            if ! instalar_paquete "$gestor" "$pkg"; then
-                echo "❌ No se pudo instalar $pkg"
-                exit 1
-            fi
+    if [ $((now - LAST_CHECK)) -ge 1 ]; then
+        rx=$(get_rx_bytes)
+        diff=$((rx - LAST_RX))
+        LAST_RX="$rx"
+        LAST_CHECK="$now"
+
+        KBPS=$((diff * 8 / 1024))
+
+        if [ "$KBPS" -gt 0 ]; then
+            ESTADO="Reproduciendo"
+            INFO_STREAM="${KBPS} kbps"
+        else
+            INFO_STREAM="Conectando"
         fi
-    done
 
-    if [ "$gestor" = "termux" ]; then
-        echo
-        echo "ℹ️ Nota Termux:"
-        echo "  - Asegúrate de tener audio configurado (pulseaudio)"
-        echo "  - Algunas emisoras pueden no sonar"
-        echo
+        NECESITA_REDIBUJAR=1
     fi
 }
 
-detectar_gestor_paquetes() {
-    if es_termux; then
-        echo "termux"
-    elif command -v apt >/dev/null; then
-        echo "apt"
-    elif command -v pacman >/dev/null; then
-        echo "pacman"
-    elif command -v dnf >/dev/null; then
-        echo "dnf"
+toggle_pause() {
+    echo "pause" >&3
+
+    if [ "$PAUSADO" = "0" ]; then
+        PAUSADO=1
+        ESTADO="Pausado"
     else
-        echo ""
+        PAUSADO=0
+        ESTADO="Reproduciendo"
     fi
+
+    NECESITA_REDIBUJAR=1
+}
+
+ajustar_volumen() {
+    VOL_ACTUAL=$((VOL_ACTUAL + $1))
+    ((VOL_ACTUAL < VOL_MIN)) && VOL_ACTUAL=$VOL_MIN
+    ((VOL_ACTUAL > VOL_MAX)) && VOL_ACTUAL=$VOL_MAX
+    echo "volume $(vlc_vol)" >&3
+    save_state
+    NECESITA_REDIBUJAR=1
+}
+
+stop_player() {
+    [ -n "$PID_CVLC" ] && kill "$PID_CVLC" 2>/dev/null
+    PID_CVLC=""
 }
