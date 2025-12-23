@@ -2,6 +2,7 @@
 
 UI_INIT=0
 SHOW_CONTROLS=0
+LAST_BITRATE="" # Variable para suavizar el bitrate
 
 ##############################################################################
 # UTILIDADES DE DIBUJO
@@ -31,18 +32,14 @@ ui_init() {
     clear
     tput civis
 
-    # Cabecera fija
+    # Cabecera fija rediseñada
     echo "────────────────────────────────"
-    echo " Radio.sh"
     echo " Emisora :"
     echo " Volumen :"
     echo " Estado  :"
-    echo " Info    :"
     echo "────────────────────────────────"
-    echo " Controles: [c]"
+    echo " Mostrar Controles: [c]"
     echo
-
-    # Zona inferior inicial
     echo "EMISORAS FAVORITAS"
     echo "------------------"
 
@@ -50,15 +47,14 @@ ui_init() {
 }
 
 ##############################################################################
-# CONTROLES (TOGGLE CON 'c')
+# CONTROLES
 ##############################################################################
 
 draw_controls() {
-    # Limpiamos desde línea 7 hacia abajo
-    tput cup 7 0
+    tput cup 6 0 # Subimos un poco para aprovechar el espacio de la línea eliminada
     printf "\033[J"
 
-    echo " Controles"
+    echo " Mostrar Controles"
     echo " ---------"
     echo " ↑ ↓   Seleccionar emisora"
     echo " ← →   Volumen"
@@ -74,9 +70,8 @@ draw_controls() {
 }
 
 clear_controls() {
-    tput cup 7 0
+    tput cup 6 0
     printf "\033[J"
-
     echo "EMISORAS FAVORITAS"
     echo "------------------"
 }
@@ -88,29 +83,36 @@ clear_controls() {
 menu() {
     [ "$UI_INIT" -eq 0 ] && ui_init
 
-    # Emisora
-    tput cup 2 10
+    # 1. Nombre de Emisora
+    tput cup 2 11
     printf "\033[K%s" "$ACTUAL_NOMBRE"
 
-    # Volumen
-    tput cup 3 10
+    # 2. Volumen
+    tput cup 3 11
     printf "\033[K"
     barra_vol "$VOL_ACTUAL"
 
-    # Estado
-    tput cup 4 10
-    printf "\033[K%s" "$ESTADO"
+    # 3. Lógica de Suavizado de Bitrate e Info combinada
+    # Si INFO_STREAM tiene kbps, lo guardamos. Si viene vacío o es 0, usamos el último conocido.
+    if [[ "$INFO_STREAM" =~ [1-9][0-9]* ]]; then
+        LAST_BITRATE=" @ $INFO_STREAM"
+    fi
 
-    # Info
-    tput cup 5 10
-    printf "\033[K%s" "${INFO_STREAM:-}"
+    # Si el estado es "Reproduciendo", le añadimos el bitrate guardado
+    local linea_estado="$ESTADO"
+    if [ "$ESTADO" = "Reproduciendo" ]; then
+        linea_estado="${ESTADO}${LAST_BITRATE}"
+    fi
 
-    # Lista de favoritos (empieza SIEMPRE en la misma línea)
+    tput cup 4 11
+    printf "\033[K%s" "$linea_estado"
+
+    # 4. Lista de favoritos
     local start_line
     if [ "$SHOW_CONTROLS" = "1" ]; then
-        start_line=17
+        start_line=16
     else
-        start_line=9
+        start_line=8
     fi
 
     tput cup "$start_line" 0
