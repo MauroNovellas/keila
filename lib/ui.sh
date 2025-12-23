@@ -34,12 +34,14 @@ ui_init() {
 
     # Cabecera fija rediseñada
     echo "────────────────────────────────"
+    echo
     echo " Emisora :"
     echo " Volumen :"
     echo " Estado  :"
     echo "────────────────────────────────"
     echo " Mostrar Controles: [c]"
     echo
+
     echo "EMISORAS FAVORITAS"
     echo "------------------"
 
