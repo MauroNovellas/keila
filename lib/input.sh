@@ -2,7 +2,6 @@
 
 check_player
 
-# permitir refresco visual (spinner / volumen)
 NECESITA_REDIBUJAR=1
 CURSOR_IDX=0
 
@@ -173,6 +172,17 @@ main_loop() {
 
         # ─────── MODO NORMAL ───────
         case "$op" in
+            c)
+                if [ "$SHOW_CONTROLS" = "0" ]; then
+                    SHOW_CONTROLS=1
+                    draw_controls
+                else
+                    SHOW_CONTROLS=0
+                    clear_controls
+                fi
+                NECESITA_REDIBUJAR=1
+                ;;
+
             q)
                 stop_player
                 exit 0
@@ -218,17 +228,10 @@ main_loop() {
                 NECESITA_REDIBUJAR=1
                 ;;
             e)
-                mapfile -t all < "$EMISORAS"
-                cabecera
-                for i in "${!all[@]}"; do
-                    IFS="|" read -r n _ <<< "${all[$i]}"
-                    echo "$((i+1))) $n"
-                done
-                read -r sel
-                IFS="|" read -r n u <<< "${all[$((sel-1))]}"
-                [ -n "$u" ] && reproducir "$n" "$u"
+                buscar_emisora
                 NECESITA_REDIBUJAR=1
                 ;;
+
             [0-9])
                 num="$op"
                 read -rsn1 -t 0.3 rest
