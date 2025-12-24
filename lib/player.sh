@@ -39,7 +39,11 @@ get_iface() {
 }
 
 get_rx_bytes() {
-    awk -v iface="$NET_IF" '$1 ~ iface":" {print $2}' /proc/net/dev
+    if es_termux; then
+        echo 0
+    else
+        awk -v iface="$NET_IF" '$1 ~ iface":" {print $2}' /proc/net/dev
+    fi
 }
 
 reproducir() {
