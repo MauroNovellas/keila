@@ -159,7 +159,6 @@ Onda Cero Málaga|https://atres-live.ondacero.es/live/delegaciones/oc/malaga/mas
 Onda Cero Sevilla|https://atres-live.ondacero.es/live/delegaciones/oc/sevilla/master.m3u8
 esRadio Almería|https://streaming.indalteco.net/proxy/esradioalmeria?mp=/stream
 esRadio Granada|https://azura.abcorp.es/listen/esradio_granada/radio.mp3
-esRadio Jaén|https://azura.abcorp.es/listen/esradio_jaen/radio.mp3
 esRadio Málaga|https://azura.abcorp.es/listen/esradio_malaga/radio.mp3
 LOS40 Almería|https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40_ASO_ALMERIA.mp3
 LOS40 Costa de la Luz|http://5.135.183.124:8326/stream
@@ -314,14 +313,15 @@ Onda Cero Castro Urdiales|https://server8.emitironline.com:10854/;
 Onda Cero Santander|https://atres-live.ondacero.es/live/delegaciones/oc/santander/master.m3u8
 esRadio Cantabria|http://ns100.emisionlocal.com:9428/live
 Onda Occidental|https://server9.emitironline.com:10944/;.mp3
-Cantabria FM|https://stream.zeno.fm/jndgdm0esn9vv
+Radio Foramontanos|https://foramontanos.fm:8443/live
 Distinta FM|https://ns100.emisionlocal.com/proxy/distintafm?mp=/;stream.mp3
-Radio Merindad de Campoo|https://server8.emitironline.com:18774/stream
 Ason FM|http://ns100.emisionlocal.com:8064/live
-Radio Santoña|https://server10.emitironline.com:10212/radio.mp3
-Cadena Mix|https://ns6.emisionlocal.com/proxy/radiomix?mp=%2Fstream
-Cantabria Radio|https://cantabria.radioca.st/stream
 ARCO FM|https://hisparadio.duckdns.org/stream/1/stream.mp3
+Radio Merindad de Campoo|https://server8.emitironline.com:18774/stream
+Radio Santoña|https://server10.emitironline.com:10212/radio.mp3
+Cantabria Radio|https://cantabria.radioca.st/stream
+Cadena Mix|https://ns6.emisionlocal.com/proxy/radiomix?mp=%2Fstream
+Cantabria FM|https://stream.zeno.fm/jndgdm0esn9vv
 CMM Radio|https://cdnapisec.kaltura.com/p/2288691/sp/228869100/playManifest/entryId/1_qilzwlkz/format/applehttp/.m3u8
 Radio Nacional Castilla-La Mancha|https://dispatcher.rndfnk.com/crtve/rne1/clm/mp3/high
 Radio 5 Castilla-La Mancha|https://dispatcher.rndfnk.com/crtve/rne5/tol/mp3/high
