@@ -1,6 +1,6 @@
 **Keila Radio Player** is a minimalist terminal radio station player, entirely written in Bash, featuring a lightweight TUI, favorites management, and volume control.
 
-## Features
+### Features
 
 - Clear and easy-to-use terminal interface (TUI).
 - List of favorite radio stations.
@@ -11,12 +11,10 @@
 - Compatible with MPV as playback backend.
 - Favorites management.
 - Works on Linux and other Bash-compatible systems.
-
-
-
+##
 **Keila Radio Player** es un reproductor minimalista de emisoras de radio por terminal, completamente en Bash, con TUI ligera, gestión de favoritos y control de volumen.
 
-## Características
+### Características
 
 - Interfaz de terminal (TUI) clara y fácil de usar.
 - Lista de emisoras favoritas.
