@@ -229,6 +229,7 @@ main_loop() {
                 ;;
             e)
                 buscar_emisora
+                UI_INIT=0
                 NECESITA_REDIBUJAR=1
                 ;;
 
