@@ -1,20 +1,11 @@
 #!/bin/bash
 
 ##############################################################################
-# ESTADO GLOBAL
+# ESTADO UI
 ##############################################################################
 
 UI_INIT=0
 SHOW_CONTROLS=0
-LAST_BITRATE=""
-
-# Variables de ejemplo (elimínalas si ya existen en tu programa)
-ACTUAL_NOMBRE="—"
-VOL_ACTUAL=50
-ESTADO="Detenido"
-INFO_STREAM=""
-CURSOR_IDX=0
-fav_names=("Radio 1" "Radio 2" "Radio 3")
 
 ##############################################################################
 # COLORES (fallback seguro)
@@ -64,16 +55,16 @@ ui_init() {
     clear
     tput civis
 
-    echo "${C_TITLE}┌──────────────────────────────────────────┐${C_RESET}"
-    echo "${C_TITLE}│${C_RESET}       Keila Radio Player                 ${C_TITLE}│${C_RESET}"
-    echo "${C_TITLE}├──────────────────────────────────────────┤${C_RESET}"
+    echo "${C_TITLE}┌──────────────────────────────────────┐${C_RESET}"
+    echo "${C_TITLE}│${C_RESET} 🎵  Keila Radio Player                         ${C_TITLE}│${C_RESET}"
+    echo "${C_TITLE}├──────────────────────────────────────┤${C_RESET}"
     echo "${C_TITLE}│${C_RESET} ${C_LABEL}Emisora :${C_RESET}"
     echo "${C_TITLE}│${C_RESET} ${C_LABEL}Volumen :${C_RESET}"
     echo "${C_TITLE}│${C_RESET} ${C_LABEL}Estado  :${C_RESET}"
-    echo "${C_TITLE}└──────────────────────────────────────────┘${C_RESET}"
+    echo "${C_TITLE}└──────────────────────────────────────┘${C_RESET}"
 
     echo
-    echo "${C_LABEL}[c]${C_RESET} Mostrar Controles"
+    echo "${C_LABEL}[c]${C_RESET} Mostrar controles"
     echo
     echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
     echo "──────────────────"
@@ -127,14 +118,10 @@ menu() {
     printf "\033[K"
     barra_vol "$VOL_ACTUAL"
 
-    # Bitrate suavizado
-    if [[ "$INFO_STREAM" =~ [1-9][0-9]* ]]; then
-        LAST_BITRATE=" @ ${INFO_STREAM}kbps"
-    fi
-
-    local linea_estado="$ESTADO"
+    # Estado (player ya da INFO_STREAM correcto)
+    local linea_estado
     if [ "$ESTADO" = "Reproduciendo" ]; then
-        linea_estado="${C_OK}${ESTADO}${LAST_BITRATE}${C_RESET}"
+        linea_estado="${C_OK}${ESTADO} @ ${INFO_STREAM}${C_RESET}"
     else
         linea_estado="${C_WARN}${ESTADO}${C_RESET}"
     fi
@@ -142,7 +129,7 @@ menu() {
     tput cup 5 12
     printf "\033[K%s" "$linea_estado"
 
-    # Lista
+    # Lista de favoritos
     local start_line
     if [ "$SHOW_CONTROLS" = "1" ]; then
         start_line=19
@@ -155,21 +142,11 @@ menu() {
 
     for i in "${!fav_names[@]}"; do
         if [ "$i" -eq "$CURSOR_IDX" ]; then
-            printf "${C_SEL} > %2d) %-30s ${C_RESET}\n" "$((i+1))" "${fav_names[$i]}"
+            printf "${C_SEL} > %2d) %-30s ${C_RESET}\n" \
+                "$((i+1))" "${fav_names[$i]}"
         else
-            printf "   %2d) %-30s\n" "$((i+1))" "${fav_names[$i]}"
+            printf "   %2d) %-30s\n" \
+                "$((i+1))" "${fav_names[$i]}"
         fi
     done
 }
-
-##############################################################################
-# LIMPIEZA
-##############################################################################
-
-cleanup() {
-    tput cnorm
-    tput sgr0
-    clear
-}
-
-trap cleanup EXIT
