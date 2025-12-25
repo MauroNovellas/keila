@@ -1,8 +1,40 @@
 #!/bin/bash
 
+##############################################################################
+# ESTADO GLOBAL
+##############################################################################
+
 UI_INIT=0
 SHOW_CONTROLS=0
-LAST_BITRATE="" # Variable para suavizar el bitrate
+LAST_BITRATE=""
+
+# Variables de ejemplo (elimínalas si ya existen en tu programa)
+ACTUAL_NOMBRE="—"
+VOL_ACTUAL=50
+ESTADO="Detenido"
+INFO_STREAM=""
+CURSOR_IDX=0
+fav_names=("Radio 1" "Radio 2" "Radio 3")
+
+##############################################################################
+# COLORES (fallback seguro)
+##############################################################################
+
+if tput colors &>/dev/null && [ "$(tput colors)" -ge 8 ]; then
+    C_RESET=$(tput sgr0)
+    C_TITLE=$(tput setaf 6)
+    C_LABEL=$(tput setaf 4)
+    C_OK=$(tput setaf 2)
+    C_WARN=$(tput setaf 3)
+    C_SEL=$(tput rev)
+else
+    C_RESET=""
+    C_TITLE=""
+    C_LABEL=""
+    C_OK=""
+    C_WARN=""
+    C_SEL=""
+fi
 
 ##############################################################################
 # UTILIDADES DE DIBUJO
@@ -16,7 +48,7 @@ barra_vol() {
     printf "["
     for ((i=0;i<w;i++)); do
         if [ "$i" -lt "$f" ]; then
-            printf "█"
+            printf "${C_OK}█${C_RESET}"
         else
             printf "░"
         fi
@@ -32,18 +64,19 @@ ui_init() {
     clear
     tput civis
 
-    # Cabecera fija rediseñada
-    echo "────────────────────────────────"
-    echo
-    echo " Emisora :"
-    echo " Volumen :"
-    echo " Estado  :"
-    echo "────────────────────────────────"
-    echo " Mostrar Controles: [c]"
-    echo
+    echo "${C_TITLE}┌──────────────────────────────────────────┐${C_RESET}"
+    echo "${C_TITLE}│${C_RESET}       Keila Radio Player                 ${C_TITLE}│${C_RESET}"
+    echo "${C_TITLE}├──────────────────────────────────────────┤${C_RESET}"
+    echo "${C_TITLE}│${C_RESET} ${C_LABEL}Emisora :${C_RESET}"
+    echo "${C_TITLE}│${C_RESET} ${C_LABEL}Volumen :${C_RESET}"
+    echo "${C_TITLE}│${C_RESET} ${C_LABEL}Estado  :${C_RESET}"
+    echo "${C_TITLE}└──────────────────────────────────────────┘${C_RESET}"
 
-    echo "EMISORAS FAVORITAS"
-    echo "------------------"
+    echo
+    echo "${C_LABEL}[c]${C_RESET} Mostrar Controles"
+    echo
+    echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
+    echo "──────────────────"
 
     UI_INIT=1
 }
@@ -53,29 +86,29 @@ ui_init() {
 ##############################################################################
 
 draw_controls() {
-    tput cup 6 0 # Subimos un poco para aprovechar el espacio de la línea eliminada
+    tput cup 9 0
     printf "\033[J"
 
-    echo " Mostrar Controles"
-    echo " ---------"
-    echo " ↑ ↓   Seleccionar emisora"
-    echo " ← →   Volumen"
-    echo " ENTER Reproducir"
-    echo " p     Pausa"
-    echo " f     Favorito"
-    echo " m     Mover favorito"
-    echo " e     Todas las emisoras"
-    echo " q     Salir"
+    echo "${C_TITLE}┌ CONTROLES ────────────────────────────┐${C_RESET}"
+    echo "  ↑ ↓     Seleccionar emisora"
+    echo "  ← →     Volumen"
+    echo "  ENTER   Reproducir"
+    echo "  p       Pausa"
+    echo "  f       Favorito"
+    echo "  m       Mover favorito"
+    echo "  e       Todas las emisoras"
+    echo "  q       Salir"
+    echo "${C_TITLE}└───────────────────────────────────────┘${C_RESET}"
     echo
-    echo "EMISORAS FAVORITAS"
-    echo "------------------"
+    echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
+    echo "──────────────────"
 }
 
 clear_controls() {
-    tput cup 6 0
+    tput cup 9 0
     printf "\033[J"
-    echo "EMISORAS FAVORITAS"
-    echo "------------------"
+    echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
+    echo "──────────────────"
 }
 
 ##############################################################################
@@ -85,36 +118,36 @@ clear_controls() {
 menu() {
     [ "$UI_INIT" -eq 0 ] && ui_init
 
-    # 1. Nombre de Emisora
-    tput cup 2 11
+    # Emisora
+    tput cup 3 12
     printf "\033[K%s" "$ACTUAL_NOMBRE"
 
-    # 2. Volumen
-    tput cup 3 11
+    # Volumen
+    tput cup 4 12
     printf "\033[K"
     barra_vol "$VOL_ACTUAL"
 
-    # 3. Lógica de Suavizado de Bitrate e Info combinada
-    # Si INFO_STREAM tiene kbps, lo guardamos. Si viene vacío o es 0, usamos el último conocido.
+    # Bitrate suavizado
     if [[ "$INFO_STREAM" =~ [1-9][0-9]* ]]; then
-        LAST_BITRATE=" @ $INFO_STREAM"
+        LAST_BITRATE=" @ ${INFO_STREAM}kbps"
     fi
 
-    # Si el estado es "Reproduciendo", le añadimos el bitrate guardado
     local linea_estado="$ESTADO"
     if [ "$ESTADO" = "Reproduciendo" ]; then
-        linea_estado="${ESTADO}${LAST_BITRATE}"
+        linea_estado="${C_OK}${ESTADO}${LAST_BITRATE}${C_RESET}"
+    else
+        linea_estado="${C_WARN}${ESTADO}${C_RESET}"
     fi
 
-    tput cup 4 11
+    tput cup 5 12
     printf "\033[K%s" "$linea_estado"
 
-    # 4. Lista de favoritos
+    # Lista
     local start_line
     if [ "$SHOW_CONTROLS" = "1" ]; then
-        start_line=16
+        start_line=19
     else
-        start_line=8
+        start_line=11
     fi
 
     tput cup "$start_line" 0
@@ -122,9 +155,21 @@ menu() {
 
     for i in "${!fav_names[@]}"; do
         if [ "$i" -eq "$CURSOR_IDX" ]; then
-            printf "> %d) %s\n" "$((i+1))" "${fav_names[$i]}"
+            printf "${C_SEL} > %2d) %-30s ${C_RESET}\n" "$((i+1))" "${fav_names[$i]}"
         else
-            printf "  %d) %s\n" "$((i+1))" "${fav_names[$i]}"
+            printf "   %2d) %-30s\n" "$((i+1))" "${fav_names[$i]}"
         fi
     done
 }
+
+##############################################################################
+# LIMPIEZA
+##############################################################################
+
+cleanup() {
+    tput cnorm
+    tput sgr0
+    clear
+}
+
+trap cleanup EXIT
