@@ -1,14 +1,19 @@
 #!/bin/bash
 
+##############################################################################
+# PLAYER (MPV IPC vía UNIX SOCKET)
+##############################################################################
+
 PAUSADO=0
 
-MPV_SOCKET="/tmp/radio_mpv.sock"
-
+SOCKET="/tmp/radio_mpv.sock"
 PID_MPV=""
+
 ACTUAL_NOMBRE="(ninguna)"
 ACTUAL_URL=""
 ESTADO="Detenido"
 INFO_STREAM=""
+
 START_TIME=0
 
 NET_IF=""
@@ -16,24 +21,30 @@ LAST_RX=0
 LAST_CHECK=0
 KBPS=0
 
+##############################################################################
+# INIT
+##############################################################################
+
 init_player() {
     command -v mpv >/dev/null || {
         echo "MPV no está instalado"
         exit 1
     }
-
-    command -v socat >/dev/null || {
-        echo "socat no está instalado"
-        exit 1
-    }
-
-    rm -f "$MPV_SOCKET"
 }
+
+##############################################################################
+# MPV IPC
+##############################################################################
 
 mpv_cmd() {
-    [ -S "$MPV_SOCKET" ] || return
-    printf '%s\n' "$1" | socat - "$MPV_SOCKET" >/dev/null 2>&1
+    [ -S "$SOCKET" ] || return
+    resp=$(printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null)
+    echo "$resp" | grep -vq '"error":"success"' && echo "$resp"
 }
+
+##############################################################################
+# RED / BITRATE
+##############################################################################
 
 get_iface() {
     ip route get 1 2>/dev/null | awk '{print $5; exit}'
@@ -43,8 +54,14 @@ get_rx_bytes() {
     awk -v iface="$NET_IF" '$1 ~ iface":" {print $2}' /proc/net/dev
 }
 
+##############################################################################
+# REPRODUCCIÓN
+##############################################################################
+
 reproducir() {
     stop_player
+
+    rm -f "$SOCKET"
 
     PAUSADO=0
     ACTUAL_NOMBRE="$1"
@@ -58,32 +75,46 @@ reproducir() {
     LAST_RX=$(get_rx_bytes)
     LAST_CHECK=$(date +%s)
 
-    rm -f "$MPV_SOCKET"
-
     mpv --really-quiet \
         --no-video \
         --no-terminal \
-        --input-ipc-server="$MPV_SOCKET" \
+        --input-ipc-server="$SOCKET" \
         "$ACTUAL_URL" >/dev/null 2>&1 &
 
     PID_MPV=$!
 
     # Esperar a que el socket exista
     for _ in {1..20}; do
-        [ -S "$MPV_SOCKET" ] && break
+        [ -S "$SOCKET" ] && break
         sleep 0.05
     done
 
     mpv_cmd '{ "command": ["set_property", "volume", '"$VOL_ACTUAL"'] }'
-
     save_state
 }
+
+##############################################################################
+# ESTADO
+##############################################################################
 
 check_player() {
     [ -z "$PID_MPV" ] && return
 
-    now=$(date +%s)
+    if ! kill -0 "$PID_MPV" 2>/dev/null; then
+        PID_MPV=""
+        ESTADO="Detenido"
+        INFO_STREAM=""
+        NECESITA_REDIBUJAR=1
+        return
+    fi
 
+    if [ "$PAUSADO" = "1" ]; then
+        ESTADO="Pausado"
+        INFO_STREAM="Pausado"
+        return
+    fi
+
+    now=$(date +%s)
     if [ $((now - LAST_CHECK)) -ge 1 ]; then
         rx=$(get_rx_bytes)
         diff=$((rx - LAST_RX))
@@ -92,10 +123,7 @@ check_player() {
 
         KBPS=$((diff * 8 / 1024))
 
-        if [ "$PAUSADO" = "1" ]; then
-            ESTADO="Pausado"
-            INFO_STREAM="Pausado"
-        elif [ "$KBPS" -gt 0 ]; then
+        if [ "$KBPS" -gt 0 ]; then
             ESTADO="Reproduciendo"
             INFO_STREAM="${KBPS} kbps"
         else
@@ -105,6 +133,10 @@ check_player() {
         NECESITA_REDIBUJAR=1
     fi
 }
+
+##############################################################################
+# CONTROLES
+##############################################################################
 
 toggle_pause() {
     mpv_cmd '{ "command": ["cycle", "pause"] }'
@@ -126,13 +158,16 @@ ajustar_volumen() {
     ((VOL_ACTUAL > VOL_MAX)) && VOL_ACTUAL=$VOL_MAX
 
     mpv_cmd '{ "command": ["set_property", "volume", '"$VOL_ACTUAL"'] }'
-
     save_state
     NECESITA_REDIBUJAR=1
 }
 
+##############################################################################
+# STOP
+##############################################################################
+
 stop_player() {
     [ -n "$PID_MPV" ] && kill "$PID_MPV" 2>/dev/null
     PID_MPV=""
-    rm -f "$MPV_SOCKET"
+    rm -f "$SOCKET"
 }
