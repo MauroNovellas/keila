@@ -1,14 +1,34 @@
 #!/bin/bash
 
+##############################################################################
+# DEPENDENCIAS
+# formato:
+# bin:paquete_linux:paquete_termux
+##############################################################################
+
 DEPENDENCIAS=(
-    "mpv:mpv"
-    "fzf:fzf"
-    "ip:iproute2"
-    "tput:ncurses-bin"
+    "mpv:mpv:mpv"
+    "fzf:fzf:fzf"
+    "ip:iproute2:iproute2"
+    "tput:ncurses-bin:ncurses"
 )
 
+##############################################################################
+# DETECCIÓN DE ENTORNO
+##############################################################################
+
+es_termux() {
+    [ -n "$TERMUX_VERSION" ] || command -v termux-info >/dev/null
+}
+
+##############################################################################
+# DETECCIÓN DE GESTOR DE PAQUETES
+##############################################################################
+
 detectar_gestor_paquetes() {
-    if command -v apt >/dev/null; then
+    if es_termux; then
+        echo "pkg"
+    elif command -v apt >/dev/null; then
         echo "apt"
     elif command -v pacman >/dev/null; then
         echo "pacman"
@@ -19,11 +39,18 @@ detectar_gestor_paquetes() {
     fi
 }
 
+##############################################################################
+# INSTALACIÓN
+##############################################################################
+
 instalar_paquete() {
     local gestor="$1"
     local paquete="$2"
 
     case "$gestor" in
+        pkg)
+            pkg install -y "$paquete"
+            ;;
         apt)
             sudo apt update && sudo apt install -y "$paquete"
             ;;
@@ -39,6 +66,10 @@ instalar_paquete() {
     esac
 }
 
+##############################################################################
+# COMPROBACIÓN
+##############################################################################
+
 comprobar_dependencias() {
     local gestor
     gestor=$(detectar_gestor_paquetes)
@@ -46,20 +77,42 @@ comprobar_dependencias() {
     if [ -z "$gestor" ]; then
         echo "No se pudo detectar un gestor de paquetes compatible."
         echo "Instala manualmente las dependencias."
-        exit 1
+        return 1
     fi
 
     for dep in "${DEPENDENCIAS[@]}"; do
-        IFS=":" read -r bin pkg <<< "$dep"
+        IFS=":" read -r bin pkg_linux pkg_termux <<< "$dep"
 
-        if ! command -v "$bin" >/dev/null; then
-            echo "⚠️ Dependencia faltante: $bin"
-            echo "→ Instalando paquete: $pkg"
+        if command -v "$bin" >/dev/null; then
+            continue
+        fi
 
-            if ! instalar_paquete "$gestor" "$pkg"; then
-                echo "No se pudo instalar $pkg"
-                exit 1
-            fi
+        echo "Dependencia faltante: $bin"
+
+        if es_termux; then
+            paquete="$pkg_termux"
+        else
+            paquete="$pkg_linux"
+        fi
+
+        if [ -z "$paquete" ]; then
+            echo "No hay paquete conocido para instalar $bin en este entorno."
+            return 1
+        fi
+
+        echo "Instalando paquete: $paquete"
+
+        if ! instalar_paquete "$gestor" "$paquete"; then
+            echo "No se pudo instalar $paquete"
+            return 1
         fi
     done
 }
+
+##############################################################################
+# EJECUCIÓN DIRECTA
+##############################################################################
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    comprobar_dependencias
+fi
