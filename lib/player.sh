@@ -60,7 +60,12 @@ init_player() {
 
 mpv_cmd() {
     [ -S "$SOCKET" ] || return
-    printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null
+
+    local resp
+    resp=$(printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null)
+
+    # Mostrar solo si no es un éxito silencioso
+    echo "$resp" | grep -vq '"error":"success"' && echo "$resp"
 }
 
 ##############################################################################
