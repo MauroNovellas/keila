@@ -64,8 +64,11 @@ mpv_cmd() {
     local resp
     resp=$(printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null)
 
-    # Solo mostrar errores reales
-    echo "$resp" | grep -q '"error":"success"' || echo "$resp" | grep -q '"error":"failure"' && echo "$resp"
+    # Si contiene "error":"success", no mostrar nada
+    echo "$resp" | grep -q '"error":"success"' && return
+
+    # Si contiene "error":"failure", mostrarlo
+    echo "$resp" | grep -q '"error":"failure"' && echo "$resp"
 }
 
 ##############################################################################
