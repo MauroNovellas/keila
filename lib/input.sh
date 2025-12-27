@@ -91,28 +91,34 @@ swap_fav() {
 leer_tecla() {
     local key seq
 
-    # Leer primer carácter
-    read -rsn1 -t 0.2 key || { echo ""; return; }
+    # Leer primer byte
+    IFS= read -rsn1 key || { echo ""; return; }
 
     # Si es ESC, leer secuencia completa
     if [[ "$key" == $'\x1b' ]]; then
-        # Leer hasta 5 bytes más si llegan
-        read -rsn5 -t 0.01 seq
+        seq=""
+        # Consumir todo lo que haya en el buffer sin bloquear
+        while IFS= read -rsn1 -t 0.001 k; do
+            seq+="$k"
+        done
 
         case "$seq" in
             "[A") echo "UP" ;;
             "[B") echo "DOWN" ;;
             "[C") echo "RIGHT" ;;
             "[D") echo "LEFT" ;;
-            *) echo "" ;;  # descartar basura
+            *) echo "" ;;  # descartar cualquier basura
         esac
         return
     fi
 
-    case "$key" in
-        "") echo "ENTER" ;;
-        *)  echo "$key" ;;
-    esac
+    # ENTER
+    if [[ "$key" == "" ]]; then
+        echo "ENTER"
+        return
+    fi
+
+    echo "$key"
 }
 
 ##############################################################################
