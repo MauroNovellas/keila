@@ -78,11 +78,11 @@ ui_init() {
 
 draw_controls() {
     tput cup 9 0
-    tput ed
+    printf "\033[J"
 
     echo "${C_TITLE}┌ CONTROLES ────────────────────────────┐${C_RESET}"
-    echo "  ↑ ↓     Seleccionar emisora"
-    echo "  ← →     Volumen"
+    echo "  W / S   Seleccionar emisora"
+    echo "  A / D   Volumen"
     echo "  ENTER   Reproducir"
     echo "  p       Pausa"
     echo "  f       Favorito"
@@ -91,13 +91,6 @@ draw_controls() {
     echo "  q       Salir"
     echo "${C_TITLE}└───────────────────────────────────────┘${C_RESET}"
     echo
-    echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
-    echo "──────────────────"
-}
-
-clear_controls() {
-    tput cup 9 0
-    tput ed
     echo "${C_TITLE}EMISORAS FAVORITAS${C_RESET}"
     echo "──────────────────"
 }
@@ -111,15 +104,14 @@ menu() {
 
     # Emisora
     tput cup 3 12
-    tput el
-    printf "%s" "$ACTUAL_NOMBRE"
+    printf "\033[K%s" "$ACTUAL_NOMBRE"
 
     # Volumen
     tput cup 4 12
-    tput el
+    printf "\033[K"
     barra_vol "$VOL_ACTUAL"
 
-    # Estado
+    # Estado (player ya da INFO_STREAM correcto)
     local linea_estado
     if [ "$ESTADO" = "Reproduciendo" ]; then
         linea_estado="${C_OK}${ESTADO} @ ${INFO_STREAM}${C_RESET}"
@@ -128,8 +120,7 @@ menu() {
     fi
 
     tput cup 5 12
-    tput el
-    printf "%s" "$linea_estado"
+    printf "\033[K%s" "$linea_estado"
 
     # Lista de favoritos
     local start_line
@@ -140,7 +131,7 @@ menu() {
     fi
 
     tput cup "$start_line" 0
-    tput ed   # limpia desde aquí hasta el final de la pantalla
+    printf "\033[J"
 
     for i in "${!fav_names[@]}"; do
         if [ "$i" -eq "$CURSOR_IDX" ]; then
