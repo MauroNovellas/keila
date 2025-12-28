@@ -1,258 +1,213 @@
 #!/bin/bash
 
-check_player
-
-NECESITA_REDIBUJAR=1
-CURSOR_IDX=0
-
 ##############################################################################
-# FAVORITOS
+# PLAYER (MPV IPC vía UNIX SOCKET)
 ##############################################################################
 
-load_favorites() {
-    fav_names=()
-    fav_urls=()
-    [ -f "$FAVORITAS" ] || return
+PAUSADO=0
 
-    while IFS="|" read -sr n u; do
-        fav_names+=("$n")
-        fav_urls+=("$u")
-    done < "$FAVORITAS"
+PID_MPV=""
+
+ACTUAL_NOMBRE="(ninguna)"
+ACTUAL_URL=""
+ESTADO="Detenido"
+INFO_STREAM=""
+
+START_TIME=0
+
+NET_IF=""
+LAST_RX=0
+LAST_CHECK=0
+KBPS=0
+
+##############################################################################
+# ENTORNO
+##############################################################################
+
+# Detectar si estamos en Termux (Android)
+ES_TERMUX=0
+[ -n "$TERMUX_VERSION" ] && ES_TERMUX=1
+
+##############################################################################
+# SOCKET MPV
+#
+# En Linux de escritorio usamos /tmp (rápido y estándar).
+# En Termux / Android, /tmp puede no existir o tener permisos
+# inconsistentes. Usamos ~/.cache y creamos el directorio
+# explícitamente antes de lanzar mpv.
+##############################################################################
+
+if [ "$ES_TERMUX" -eq 1 ]; then
+    SOCKET="$HOME/.cache/radio_mpv.sock"
+else
+    SOCKET="/tmp/radio_mpv.sock"
+fi
+
+##############################################################################
+# INIT
+##############################################################################
+
+init_player() {
+    command -v mpv >/dev/null || {
+        echo "MPV no está instalado"
+        exit 1
+    }
 }
 
-save_favorites() {
-    : > "$FAVORITAS"
-    for i in "${!fav_names[@]}"; do
-        echo "${fav_names[$i]}|${fav_urls[$i]}" >> "$FAVORITAS"
+##############################################################################
+# MPV IPC
+##############################################################################
+
+mpv_cmd() {
+    [ -S "$SOCKET" ] || return
+
+    local resp
+    resp=$(printf '%s\n' "$1" | socat - UNIX-CONNECT:"$SOCKET" 2>/dev/null)
+
+    # Mostrar solo si no es un éxito silencioso
+    echo "$resp" | grep -vq '"error":"success"' && echo "$resp"
+}
+
+##############################################################################
+# RED / BITRATE (solo Linux PC)
+##############################################################################
+
+get_iface() {
+    [ "$ES_TERMUX" -eq 1 ] && return
+    ip route get 1 2>/dev/null | awk '{print $5; exit}'
+}
+
+get_rx_bytes() {
+    [ "$ES_TERMUX" -eq 1 ] && echo 0 && return
+    awk -v iface="$NET_IF" '$1 ~ iface":" {print $2}' /proc/net/dev
+}
+
+##############################################################################
+# REPRODUCCIÓN
+##############################################################################
+
+reproducir() {
+    stop_player
+    rm -f "$SOCKET"
+
+    PAUSADO=0
+    ACTUAL_NOMBRE="$1"
+    ACTUAL_URL="$2"
+    ESTADO="Conectando"
+    INFO_STREAM="Conectando"
+    START_TIME=$(date +%s)
+    NECESITA_REDIBUJAR=1
+
+    if [ "$ES_TERMUX" -eq 0 ]; then
+        NET_IF=$(get_iface)
+        LAST_RX=$(get_rx_bytes)
+        LAST_CHECK=$(date +%s)
+    fi
+
+    # Asegurar que el directorio del socket existe (crítico en Termux)
+    mkdir -p "$(dirname "$SOCKET")"
+
+    mpv --really-quiet \
+        --no-video \
+        --no-terminal \
+        --input-ipc-server="$SOCKET" \
+        "$ACTUAL_URL" >/dev/null 2>&1 &
+
+    PID_MPV=$!
+
+    # Esperar a que el socket IPC exista
+    for _ in {1..40}; do
+        [ -S "$SOCKET" ] && break
+        sleep 0.05
     done
+
+    mpv_cmd '{ "command": ["set_property", "volume", '"$VOL_ACTUAL"'] }'
+    save_state
 }
 
-confirmar_fav() {
-    local accion="$1"
+##############################################################################
+# ESTADO
+##############################################################################
 
-    echo
-    echo "¿$accion \"$ACTUAL_NOMBRE\" de favoritos? (S/N)"
+check_player() {
+    [ -z "$PID_MPV" ] && return
 
-    while true; do
-        read -rsn1 key
-        case "$key" in
-            [sS])
-                toggle_fav_real
-                return
-                ;;
-            [nN])
-                return
-                ;;
-        esac
-    done
-}
+    if ! kill -0 "$PID_MPV" 2>/dev/null; then
+        PID_MPV=""
+        ESTADO="Detenido"
+        INFO_STREAM=""
+        NECESITA_REDIBUJAR=1
+        return
+    fi
 
-toggle_fav_real() {
-    for i in "${!fav_urls[@]}"; do
-        if [ "${fav_urls[$i]}" = "$ACTUAL_URL" ]; then
-            unset fav_names[$i] fav_urls[$i]
-            fav_names=("${fav_names[@]}")
-            fav_urls=("${fav_urls[@]}")
-            ((CURSOR_IDX >= ${#fav_names[@]})) && CURSOR_IDX=$((${#fav_names[@]}-1))
-            save_favorites
-            NECESITA_REDIBUJAR=1
-            return
+    if [ "$PAUSADO" = "1" ]; then
+        ESTADO="Pausado"
+        INFO_STREAM="Pausado"
+        return
+    fi
+
+    # En Termux no calculamos bitrate (Android bloquea /proc/net)
+    if [ "$ES_TERMUX" -eq 1 ]; then
+        ESTADO="Reproduciendo"
+        INFO_STREAM=""
+        NECESITA_REDIBUJAR=1
+        return
+    fi
+
+    now=$(date +%s)
+    if [ $((now - LAST_CHECK)) -ge 1 ]; then
+        rx=$(get_rx_bytes)
+        diff=$((rx - LAST_RX))
+        LAST_RX="$rx"
+        LAST_CHECK="$now"
+
+        KBPS=$((diff * 8 / 1024))
+
+        if [ "$KBPS" -gt 0 ]; then
+            ESTADO="Reproduciendo"
+            INFO_STREAM="${KBPS} kbps"
+        else
+            ESTADO="Conectando"
         fi
-    done
 
-    fav_names+=("$ACTUAL_NOMBRE")
-    fav_urls+=("$ACTUAL_URL")
-    save_favorites
+        NECESITA_REDIBUJAR=1
+    fi
+}
+
+##############################################################################
+# CONTROLES
+##############################################################################
+
+toggle_pause() {
+    mpv_cmd '{ "command": ["cycle", "pause"] }'
+
+    if [ "$PAUSADO" = "0" ]; then
+        PAUSADO=1
+        ESTADO="Pausado"
+    else
+        PAUSADO=0
+        ESTADO="Reproduciendo"
+    fi
+
+    NECESITA_REDIBUJAR=1
+}
+
+ajustar_volumen() {
+    VOL_ACTUAL=$((VOL_ACTUAL + $1))
+    ((VOL_ACTUAL < VOL_MIN)) && VOL_ACTUAL=$VOL_MIN
+    ((VOL_ACTUAL > VOL_MAX)) && VOL_ACTUAL=$VOL_MAX
+
+    mpv_cmd '{ "command": ["set_property", "volume", '"$VOL_ACTUAL"'] }'
+    save_state
     NECESITA_REDIBUJAR=1
 }
 
 ##############################################################################
-# UTILIDADES
+# STOP
 ##############################################################################
 
-swap_fav() {
-    local a="$1"
-    local b="$2"
-    local tmp
-
-    tmp="${fav_names[$a]}"
-    fav_names[$a]="${fav_names[$b]}"
-    fav_names[$b]="$tmp"
-
-    tmp="${fav_urls[$a]}"
-    fav_urls[$a]="${fav_urls[$b]}"
-    fav_urls[$b]="$tmp"
-}
-
-##############################################################################
-# LECTURA DE TECLAS (CORREGIDO)
-##############################################################################
-
-leer_tecla() {
-    local key seq
-
-    # Leer primer carácter
-    if ! IFS= read -rsn1 -t 0.2 key; then
-        echo ""
-        return
-    fi
-
-    # Si es ESC, intentar leer secuencia ANSI
-    if [[ "$key" == $'\x1b' ]]; then
-        # Intentar leer dos caracteres más
-        if IFS= read -rsn2 -t 0.02 seq; then
-            case "$seq" in
-                "[A") echo "UP" ;;
-                "[B") echo "DOWN" ;;
-                "[C") echo "RIGHT" ;;
-                "[D") echo "LEFT" ;;
-                *)    echo "" ;;
-            esac
-        else
-            # Si no llegó la secuencia completa, descartar lo que haya
-            IFS= read -rsn2 -t 0 seq 2>/dev/null || true
-            echo ""
-        fi
-        return
-    fi
-
-    # ENTER
-    if [[ "$key" == "" ]]; then
-        echo "ENTER"
-        return
-    fi
-
-    echo "$key"
-}
-
-##############################################################################
-# MENÚ PRINCIPAL
-##############################################################################
-
-main_loop() {
-    while true; do
-        check_player
-
-        if [ "$NECESITA_REDIBUJAR" = "1" ]; then
-            menu
-            NECESITA_REDIBUJAR=0
-        fi
-
-        op=$(leer_tecla)
-
-        [ -z "$op" ] && continue
-
-        # ─────── MODO MOVER ───────
-        if [ "$MODO_MOVER" = "1" ]; then
-            case "$op" in
-                UP)
-                    if [ "$CURSOR_IDX" -gt 0 ]; then
-                        swap_fav "$CURSOR_IDX" "$((CURSOR_IDX-1))"
-                        ((CURSOR_IDX--))
-                        NECESITA_REDIBUJAR=1
-                    fi
-                    ;;
-                DOWN)
-                    if [ "$CURSOR_IDX" -lt $((${#fav_names[@]}-1)) ]; then
-                        swap_fav "$CURSOR_IDX" "$((CURSOR_IDX+1))"
-                        ((CURSOR_IDX++))
-                        NECESITA_REDIBUJAR=1
-                    fi
-                    ;;
-                ENTER|m)
-                    save_favorites
-                    MODO_MOVER=0
-                    NECESITA_REDIBUJAR=1
-                    ;;
-                q)
-                    while [ "$CURSOR_IDX" -ne "$ORIG_IDX" ]; do
-                        if [ "$CURSOR_IDX" -gt "$ORIG_IDX" ]; then
-                            swap_fav "$CURSOR_IDX" "$((CURSOR_IDX-1))"
-                            ((CURSOR_IDX--))
-                        else
-                            swap_fav "$CURSOR_IDX" "$((CURSOR_IDX+1))"
-                            ((CURSOR_IDX++))
-                        fi
-                    done
-                    MODO_MOVER=0
-                    NECESITA_REDIBUJAR=1
-                    ;;
-            esac
-            continue
-        fi
-
-        # ─────── MODO NORMAL ───────
-        case "$op" in
-            c)
-                if [ "$SHOW_CONTROLS" = "0" ]; then
-                    SHOW_CONTROLS=1
-                    draw_controls
-                else
-                    SHOW_CONTROLS=0
-                    clear_controls
-                fi
-                NECESITA_REDIBUJAR=1
-                ;;
-            q)
-                stop_player
-                exit 0
-                ;;
-            p)
-                toggle_pause
-                NECESITA_REDIBUJAR=1
-                ;;
-            m)
-                [ "${#fav_names[@]}" -gt 0 ] || continue
-                MODO_MOVER=1
-                ORIG_IDX="$CURSOR_IDX"
-                NECESITA_REDIBUJAR=1
-                ;;
-            f)
-                if [ -n "$ACTUAL_URL" ]; then
-                    if printf '%s\n' "${fav_urls[@]}" | grep -qx "$ACTUAL_URL"; then
-                        confirmar_fav "Quitar"
-                    else
-                        confirmar_fav "Añadir"
-                    fi
-                fi
-                ;;
-            UP)
-                ((CURSOR_IDX > 0)) && ((CURSOR_IDX--))
-                NECESITA_REDIBUJAR=1
-                ;;
-            DOWN)
-                ((CURSOR_IDX < ${#fav_names[@]}-1)) && ((CURSOR_IDX++))
-                NECESITA_REDIBUJAR=1
-                ;;
-            LEFT)
-                ajustar_volumen "-$VOL_STEP"
-                NECESITA_REDIBUJAR=1
-                ;;
-            RIGHT)
-                ajustar_volumen "$VOL_STEP"
-                NECESITA_REDIBUJAR=1
-                ;;
-            ENTER)
-                [ "${#fav_urls[@]}" -gt 0 ] && \
-                reproducir "${fav_names[$CURSOR_IDX]}" "${fav_urls[$CURSOR_IDX]}"
-                NECESITA_REDIBUJAR=1
-                ;;
-            e)
-                buscar_emisora
-                UI_INIT=0
-                NECESITA_REDIBUJAR=1
-                ;;
-            [0-9])
-                num="$op"
-                read -rsn1 -t 0.3 rest
-                [[ "$rest" =~ [0-9] ]] && num+="$rest"
-                idx=$((num-1))
-                if [ "$idx" -ge 0 ] && [ "$idx" -lt "${#fav_urls[@]}" ]; then
-                    CURSOR_IDX="$idx"
-                    reproducir "${fav_names[$idx]}" "${fav_urls[$idx]}"
-                    NECESITA_REDIBUJAR=1
-                fi
-                ;;
-        esac
-    done
+stop_player() {
+    [ -n "$PID_MPV" ] && kill "$PID_MPV" 2>/dev/null
+    PID_MPV=""
+    rm -f "$SOCKET"
 }
