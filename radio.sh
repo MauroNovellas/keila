@@ -1,9 +1,5 @@
 #!/bin/bash
 
-##############################################################################
-# CONFIGURACIÓN INICIAL DEL TERMINAL
-##############################################################################
-
 cleanup() {
     tput cnorm
     tput sgr0
@@ -13,51 +9,48 @@ cleanup() {
 tput civis
 trap cleanup INT TERM EXIT
 
-##############################################################################
-# RUTAS BASE
-##############################################################################
-
+# Calcular ruta del proyecto y entrar en ella
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$BASE_DIR"
+
 LIB="$BASE_DIR/lib"
+UI_C="$BASE_DIR/lib_c/ui_ncurses"
 
-##############################################################################
-# CARGA DE LIBRERÍAS
-##############################################################################
+# Exportar BASE_DIR para que ui.c pueda usarlo si lo necesita
+export BASE_DIR
 
+# Cargar configuración
 source "$LIB/config.sh"
+
+# Exportar ruta de favoritos para ui.c
+export KEILA_FAVORITAS="$FAVORITAS"
+
+# Cargar módulos
 source "$LIB/state.sh"
 source "$LIB/deps.sh"
-source "$LIB/ui.sh"
 source "$LIB/player.sh"
 source "$LIB/search.sh"
-source "$LIB/input.sh"
-
-##############################################################################
-# COMPROBACIÓN DE DEPENDENCIAS
-##############################################################################
 
 comprobar_dependencias
-
-##############################################################################
-# INICIALIZACIÓN
-##############################################################################
-
 init_state
 init_player
-
 load_state
-load_favorites
 
-##############################################################################
-# REANUDAR ÚLTIMA EMISORA (SI EXISTE)
-##############################################################################
+while true; do
+    cmd=$("$UI_C" </dev/tty >/dev/tty)
 
-if [ -n "$LAST_URL" ]; then
-    reproducir "$LAST_NAME" "$LAST_URL"
-fi
+    echo "DEBUG CMD = '$cmd'"
+    sleep 1
 
-##############################################################################
-# BUCLE PRINCIPAL
-##############################################################################
+    IFS="|" read -r action name url <<< "$cmd"
 
-main_loop
+    case "$action" in
+        PLAY)
+            reproducir "$name" "$url"
+            ;;
+        EXIT)
+            stop_player
+            exit 0
+            ;;
+    esac
+done
