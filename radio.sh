@@ -37,7 +37,8 @@ init_player
 load_state
 
 while true; do
-    cmd=$("$UI_C" </dev/tty >/dev/tty)
+    cmd=$("$UI_C" </dev/tty 2>/dev/tty)
+
 
     echo "DEBUG CMD = '$cmd'"
     sleep 1
